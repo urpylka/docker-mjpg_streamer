@@ -1,0 +1,51 @@
+name: Docker
+
+# If you want configure own CI,
+# setup next secrets in Github repo:
+# DOCKERHUB_LOGIN, DOCKERHUB_TOKEN
+
+on:
+  push:
+    branches:
+      - main
+
+    # Publish `v1.2.3` tags as releases.
+    tags:
+      - v*
+
+env:
+  IMAGE_NAME: mjpg_streamer
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Log into registry
+        run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u ${{ secrets.DOCKERHUB_LOGIN }} --password-stdin
+
+      - name: Build & push images
+        run: |
+          IMAGE_ID=${{ secrets.DOCKERHUB_LOGIN }}/$IMAGE_NAME
+
+          # Change all uppercase to lowercase
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+
+          # Strip git ref prefix from version
+          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+
+          # Strip "v" prefix from tag name
+          [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
+
+          # Use Docker "latest" tag convention
+          [ "$VERSION" == "main" ] && VERSION=latest
+
+          # https://docs.docker.com/buildx/working-with-buildx/#build-multi-platform-images
+          docker run --privileged --rm tonistiigi/binfmt --install all
+          docker buildx create --use
+          docker buildx build --push \
+            --tag $IMAGE_ID:$VERSION \
+            --platform linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64 .
